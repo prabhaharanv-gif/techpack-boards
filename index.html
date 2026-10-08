@@ -18,7 +18,12 @@ button.primary,.btn.primary{background:var(--accent);border-color:var(--accent);
 #drop.over{border-color:var(--accent);background:#eef3ff}
 #status{margin:0 24px;font-size:13px;color:var(--mute);min-height:18px}
 #boards{padding:20px 24px 40px}
-.sheet{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px;margin-bottom:20px}
+.sheet{margin-bottom:20px}
+.sheet.blank{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px}
+/* one grid per row of 3 boards: the boards share its rows, so the same row has the same height across them */
+.grp{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(var(--n),auto);column-gap:20px;margin-bottom:20px}
+.grp>.card{display:grid;grid-row:1 / span var(--n);grid-template-rows:subgrid;max-width:none;justify-self:stretch}
+@media (max-width:900px){.grp{display:block}.grp>.card{display:block;margin-bottom:20px}}
 .ptitle,.pdate{display:none}
 .card{background:#fff;border:1px solid var(--line);border-radius:6px;width:100%;max-width:400px;justify-self:center;position:relative;box-shadow:0 1px 2px rgba(40,30,10,.06),0 6px 18px rgba(40,30,10,.07)}
 .card.empty{border:1px dashed #cfc7b8;opacity:.6;box-shadow:none}
@@ -36,7 +41,9 @@ button.primary,.btn.primary{background:var(--accent);border-color:var(--accent);
   header,#drop,#status,.x,.card.empty{display:none}
   body{background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   #boards{padding:0}
-  .sheet{grid-template-columns:repeat(3,1fr);gap:6mm;margin:0;position:relative;width:297mm;height:210mm;padding:21mm 12mm 11mm;break-after:page;overflow:hidden;align-content:start;background:#fff}
+  .sheet{margin:0;position:relative;width:297mm;height:210mm;padding:21mm 12mm 11mm;break-after:page;overflow:hidden;background:#fff}
+  .grp{display:grid !important;column-gap:6mm;margin-bottom:6mm}
+  .grp>.card{display:grid !important;margin-bottom:0}
   .sheet.blank{display:none}
   .sheet.lastreal{break-after:auto}
   .ptitle{display:block;position:absolute;top:8mm;left:12mm;right:12mm;margin:0;padding-bottom:3mm;border-bottom:.5mm solid var(--gold);font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:17pt;letter-spacing:.18em;text-transform:uppercase;color:var(--ink)}
@@ -557,6 +564,8 @@ function paginate(list) {
   for (let i = 0; i < list.length; i += 3) {
     const items = list.slice(i, i + 3);
     const nf = Math.max(...items.map(b => b.nf || 1));
+    // a board with fewer fabrics than its neighbours shows N/A for the missing ones
+    items.forEach(b => { for (let i = (b.nf || 1) + 1; i <= nf; i++) if (b['fd' + i] === undefined) b['fd' + i] = 'N/A'; });
     groups.push({ items, nf, h: groupMm(nf) });
   }
   const pages = []; let cur = null, used = 0;
@@ -720,7 +729,7 @@ async function downloadXlsx() {
   const nfMax = Math.max(1, ...boards.map(b => b.nf || 1));
   const dcols = rowsFor(nfMax, nfMax > 1);
   ds.columns = dcols.map(([k, label]) => ({ header: label, key: k, width: /^fd/.test(k) ? 44 : k === 'name' ? 30 : 22 }));
-  boards.forEach(b => ds.addRow(Object.fromEntries(dcols.map(([k]) => [k, String(b[k] || '').toUpperCase()]))));
+  boards.forEach(b => ds.addRow(Object.fromEntries(dcols.map(([k]) => [k, String(b[k] || (/^fd/.test(k) ? 'N/A' : '')).toUpperCase()]))));
   ds.getRow(1).eachCell(c => {
     c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     c.fill = { type: 'pattern', pattern: 'solid', fgColor: ink };
@@ -971,7 +980,7 @@ function render() {
     const row = ([k, label]) => `<div class="row"><span class="lab">${label}</span><div class="val" contenteditable="true" data-k="${k}"></div></div>`;
     c.innerHTML = `<button class="x" title="Remove">×</button>
       <div class="img">${d.img ? `<img src="${d.img}" alt="">` : '<span>No sketch found</span>'}</div>
-      ${rowsFor(d.nf, d.nf > 1).map(row).join('')}`;
+      ${rowsFor(g.nf, g.nf > 1).map(row).join('')}`;
     c.querySelectorAll('.val').forEach(r => {
       r.textContent = d[r.dataset.k] || '';
       r.addEventListener('input', () => { d[r.dataset.k] = r.textContent.trim(); });
@@ -984,7 +993,14 @@ function render() {
   pages.forEach((pg, pi) => {
     const sheet = newSheet(false);
     if (pi === pages.length - 1) sheet.classList.add('lastreal');
-    pg.groups.forEach(g => g.items.forEach(d => sheet.appendChild(card(d, g))));
+    pg.groups.forEach(g => {
+      // one grid per row of 3 boards, so the same rows line up across the boards (see .grp in the CSS)
+      const grp = document.createElement('div');
+      grp.className = 'grp';
+      grp.style.setProperty('--n', 1 + rowsFor(g.nf, false).length);
+      g.items.forEach(d => grp.appendChild(card(d, g)));
+      sheet.appendChild(grp);
+    });
   });
   const fill = Math.max(0, MIN_BOARDS - boards.length);
   if (fill) {

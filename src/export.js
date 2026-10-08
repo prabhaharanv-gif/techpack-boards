@@ -23,6 +23,8 @@ function paginate(list) {
   for (let i = 0; i < list.length; i += 3) {
     const items = list.slice(i, i + 3);
     const nf = Math.max(...items.map(b => b.nf || 1));
+    // a board with fewer fabrics than its neighbours shows N/A for the missing ones
+    items.forEach(b => { for (let i = (b.nf || 1) + 1; i <= nf; i++) if (b['fd' + i] === undefined) b['fd' + i] = 'N/A'; });
     groups.push({ items, nf, h: groupMm(nf) });
   }
   const pages = []; let cur = null, used = 0;
@@ -186,7 +188,7 @@ async function downloadXlsx() {
   const nfMax = Math.max(1, ...boards.map(b => b.nf || 1));
   const dcols = rowsFor(nfMax, nfMax > 1);
   ds.columns = dcols.map(([k, label]) => ({ header: label, key: k, width: /^fd/.test(k) ? 44 : k === 'name' ? 30 : 22 }));
-  boards.forEach(b => ds.addRow(Object.fromEntries(dcols.map(([k]) => [k, String(b[k] || '').toUpperCase()]))));
+  boards.forEach(b => ds.addRow(Object.fromEntries(dcols.map(([k]) => [k, String(b[k] || (/^fd/.test(k) ? 'N/A' : '')).toUpperCase()]))));
   ds.getRow(1).eachCell(c => {
     c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     c.fill = { type: 'pattern', pattern: 'solid', fgColor: ink };

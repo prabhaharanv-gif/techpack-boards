@@ -236,7 +236,7 @@ function render() {
     const row = ([k, label]) => `<div class="row"><span class="lab">${label}</span><div class="val" contenteditable="true" data-k="${k}"></div></div>`;
     c.innerHTML = `<button class="x" title="Remove">×</button>
       <div class="img">${d.img ? `<img src="${d.img}" alt="">` : '<span>No sketch found</span>'}</div>
-      ${rowsFor(d.nf, d.nf > 1).map(row).join('')}`;
+      ${rowsFor(g.nf, g.nf > 1).map(row).join('')}`;
     c.querySelectorAll('.val').forEach(r => {
       r.textContent = d[r.dataset.k] || '';
       r.addEventListener('input', () => { d[r.dataset.k] = r.textContent.trim(); });
@@ -249,7 +249,14 @@ function render() {
   pages.forEach((pg, pi) => {
     const sheet = newSheet(false);
     if (pi === pages.length - 1) sheet.classList.add('lastreal');
-    pg.groups.forEach(g => g.items.forEach(d => sheet.appendChild(card(d, g))));
+    pg.groups.forEach(g => {
+      // one grid per row of 3 boards, so the same rows line up across the boards (see .grp in the CSS)
+      const grp = document.createElement('div');
+      grp.className = 'grp';
+      grp.style.setProperty('--n', 1 + rowsFor(g.nf, false).length);
+      g.items.forEach(d => grp.appendChild(card(d, g)));
+      sheet.appendChild(grp);
+    });
   });
   const fill = Math.max(0, MIN_BOARDS - boards.length);
   if (fill) {
