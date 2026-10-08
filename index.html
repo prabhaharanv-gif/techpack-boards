@@ -25,10 +25,11 @@ button.primary,.btn.primary{background:var(--accent);border-color:var(--accent);
 .card .img{height:300px;display:flex;align-items:center;justify-content:center;padding:10px;background:#fbf9f6;border-radius:5px 5px 0 0}
 .card .img img{max-width:100%;max-height:100%;mix-blend-mode:multiply}
 .card .img span{color:#aaa;font-size:13px}
-.card .row{border-top:1px solid var(--line);text-align:center;padding:0 6px;font-size:15px;letter-spacing:.04em;font-weight:500;color:var(--ink);height:42px;outline:none;display:flex;align-items:center;justify-content:center;background:#fff}
+.card .row{display:grid;grid-template-columns:42% 58%;border-top:1px solid var(--line);min-height:40px;background:#fff}
 .card .img+.row{border-top:2px solid var(--gold)}
-.card .row:focus{background:#eef3ff}
-.card .row:empty::before{content:attr(data-ph);color:#bbb}
+.card .lab{padding:6px 9px;font-size:12px;letter-spacing:.05em;color:var(--ink);border-right:1px solid var(--line);display:flex;align-items:center}
+.card .val{padding:6px 9px;font-size:14px;color:var(--ink);outline:none;display:flex;align-items:center;min-width:0;overflow-wrap:anywhere}
+.card .val:focus{background:#eef3ff}
 .x{position:absolute;top:4px;right:6px;border:0;background:none;color:#999;font-size:18px;padding:0 4px}
 @page{size:A4 landscape;margin:0}
 @media print{
@@ -42,8 +43,10 @@ button.primary,.btn.primary{background:var(--accent);border-color:var(--accent);
   .ptitle b{font-weight:700;color:var(--gold-d)}
   .pdate{display:block;position:absolute;bottom:5mm;right:12mm;font-size:9pt;letter-spacing:.16em;color:var(--mute);border-top:.2mm solid var(--line);padding-top:1.5mm;min-width:30mm;text-align:right}
   .card{max-width:none;break-inside:avoid;box-shadow:none;border-radius:2mm}
-  .card .img{height:40mm;padding:2mm}
-  .card .row{font-size:10pt;height:7mm;padding:0 2mm}
+  .card .img{height:30mm;padding:2mm}
+  .card .row{min-height:5.6mm}
+  .card .lab{font-size:7.5pt;padding:.5mm 1.5mm}
+  .card .val{font-size:8.5pt;padding:.5mm 1.5mm}
 }
 </style>
 </head>
@@ -529,8 +532,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
  * @copyright Louis-Dominique Dubeau
  */function n(e){return e>=65&&e<=90||95===e||e>=97&&e<=122||e>=192&&e<=214||e>=216&&e<=246||e>=248&&e<=767||e>=880&&e<=893||e>=895&&e<=8191||e>=8204&&e<=8205||e>=8304&&e<=8591||e>=11264&&e<=12271||e>=12289&&e<=55295||e>=63744&&e<=64975||e>=65008&&e<=65533||e>=65536&&e<=983039}Object.defineProperty(r,"__esModule",{value:!0}),r.NC_NAME_START_CHAR="A-Z_a-z\xc0-\xd6\xd8-\xf6\xf8-\u02ff\u0370-\u037d\u037f-\u1fff\u200c-\u200d\u2070-\u218f\u2c00-\u2fef\u3001-\ud7ff\uf900-\ufdcf\ufdf0-\ufffd\ud800\udc00-\udb7f\udfff",r.NC_NAME_CHAR="-"+r.NC_NAME_START_CHAR+".0-9\xb7\u0300-\u036f\u203f-\u2040",r.NC_NAME_START_CHAR_RE=new RegExp("^["+r.NC_NAME_START_CHAR+"]$","u"),r.NC_NAME_CHAR_RE=new RegExp("^["+r.NC_NAME_CHAR+"]$","u"),r.NC_NAME_RE=new RegExp("^["+r.NC_NAME_START_CHAR+"]["+r.NC_NAME_CHAR+"]*$","u"),r.isNCNameStartChar=n,r.isNCNameChar=function(e){return n(e)||45===e||46===e||e>=48&&e<=57||183===e||e>=768&&e<=879||e>=8255&&e<=8256}},{}]},{},[15])(15)}));
 //# sourceMappingURL=exceljs.min.js.map</script>
-<script>// Downloads: PDF (A4 landscape, 6 boards per page) and Excel (one row per board, sketch embedded).
-const EXPORT_COLS = [['name', 'Style name'], ['sizes', 'Sizes'], ['style', 'Style no.'], ['fabric', 'Fabric'], ['color', 'Colour'], ['gsm', 'GSM']];
+<script>// Downloads: PDF (A4 landscape, 6 boards per page) and Excel (same board layout, plus a plain data sheet).
+const EXPORT_COLS = [
+  ['name', 'PRODUCT DESCRIPTION'], ['sizes', 'SIZE RANGE'], ['style', 'STYLE No.'], ['fabric', 'FABRIC DETAILS'],
+  ['color', 'FABRIC COLOUR'], ['print', 'PRINT'], ['emb', 'EMBROIDERY'], ['qty', 'ORDER QTY']
+];
 const todayText = () => new Date().toLocaleDateString('en-GB');
 const stamp = () => new Date().toISOString().slice(0, 10);
 const loadImg = src => new Promise(r => { if (!src) return r(null); const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; });
@@ -551,8 +557,8 @@ function saveBlob(blob, name) {
 async function downloadPdf() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-  const M = 12, GAP = 6, CW = (297 - 2 * M - 2 * GAP) / 3, IMGH = 38, TOP = 24;
-  const RHS = [7, 7, 7, 11, 7, 7];                           // the fabric row is taller so long text can wrap
+  const M = 12, GAP = 6, CW = (297 - 2 * M - 2 * GAP) / 3, IMGH = 32, TOP = 22, LABW = CW * 0.42;
+  const RHS = [6.2, 6.2, 6.2, 10.4, 6.2, 6.2, 6.2, 6.2];                     // the fabric row is taller so long text can wrap
   const CH = IMGH + RHS.reduce((a, b) => a + b, 0);
   const gold = [176, 141, 87], ink = [34, 35, 43], rule = [217, 210, 197];
   const imgs = await Promise.all(boards.map(b => loadImg(b.img)));
@@ -560,38 +566,43 @@ async function downloadPdf() {
   for (let p = 0; p < boards.length; p += 6) {
     if (p) doc.addPage();
     doc.setFont('times', 'normal'); doc.setFontSize(16); doc.setTextColor(...ink);
-    doc.text('STORY BOARD - OH MY BABY', M, 15, { charSpace: 1.2 });
-    doc.setDrawColor(...gold); doc.setLineWidth(0.5); doc.line(M, 19, 297 - M, 19);
+    doc.text('STORY BOARD - OH MY BABY', M, 14, { charSpace: 1.2 });
+    doc.setDrawColor(...gold); doc.setLineWidth(0.5); doc.line(M, 18, 297 - M, 18);
 
     for (let i = 0; i < 6 && p + i < boards.length; i++) {
       const b = boards[p + i], im = imgs[p + i];
       const x = M + (i % 3) * (CW + GAP), y = TOP + Math.floor(i / 3) * (CH + GAP);
-            if (im) {
-        const s = Math.min((CW - 4) / im.naturalWidth, (IMGH - 4) / im.naturalHeight);
+      if (im) {
+        const s = Math.min((CW - 4) / im.naturalWidth, (IMGH - 3) / im.naturalHeight);
         const w = im.naturalWidth * s, h = im.naturalHeight * s;
         doc.addImage(toJpeg(im), 'JPEG', x + (CW - w) / 2, y + (IMGH - h) / 2, w, h);
       }
       doc.setDrawColor(...rule); doc.setLineWidth(0.25);
       doc.roundedRect(x, y, CW, CH, 1.5, 1.5, 'S');
+      doc.line(x + LABW, y + IMGH, x + LABW, y + CH);
       doc.setDrawColor(...gold); doc.setLineWidth(0.4); doc.line(x, y + IMGH, x + CW, y + IMGH);
       doc.setFont('helvetica', 'normal'); doc.setTextColor(...ink);
-      EXPORT_COLS.forEach(([k], r) => {
+      EXPORT_COLS.forEach(([k, label], r) => {
         const RH = RHS[r], ry = y + IMGH + RHS.slice(0, r).reduce((a, c) => a + c, 0);
         if (r) { doc.setDrawColor(...rule); doc.setLineWidth(0.2); doc.line(x, ry, x + CW, ry); }
-        const t = b[k] || '';
-        let fs = 10, lines;
-        for (;;) {                                           // largest size at which the text fits the row (wrapping if needed)
-          doc.setFontSize(fs);
-          lines = doc.splitTextToSize(t, CW - 4);
-          if (lines.length * fs * 0.3528 * 1.2 <= RH - 1.2 || fs <= 6.5) break;
-          fs -= 0.5;
-        }
-        const lh = fs * 0.3528 * 1.2;
-        doc.text(lines, x + CW / 2, ry + RH / 2 - (lines.length - 1) * lh / 2 + fs * 0.3528 * 0.33, { align: 'center', lineHeightFactor: 1.2 });
+        // fit text into the cell: largest size at which it fits, wrapping onto more lines when needed
+        const put = (text, left, width, maxFs) => {
+          let fs = maxFs, lines;
+          for (;;) {
+            doc.setFontSize(fs);
+            lines = doc.splitTextToSize(String(text || ''), width - 3);
+            if (lines.length * fs * 0.3528 * 1.2 <= RH - 1 || fs <= 6) break;
+            fs -= 0.5;
+          }
+          const lh = fs * 0.3528 * 1.2;
+          doc.text(lines, left + 1.5, ry + RH / 2 - (lines.length - 1) * lh / 2 + fs * 0.3528 * 0.33, { lineHeightFactor: 1.2 });
+        };
+        put(label, x, LABW, 8.5);
+        put(b[k], x + LABW, CW - LABW, 9.5);
       });
     }
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(122, 116, 104);
-    doc.text(todayText(), 297 - M, 203, { align: 'right' });
+    doc.text(todayText(), 297 - M, 204, { align: 'right' });
   }
   saveBlob(doc.output('blob'), `Story Board - Oh My Baby ${stamp()}.pdf`);
 }
@@ -600,34 +611,36 @@ async function downloadXlsx() {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Story Board', {
     // fixed scale (not fit-to-page) so the manual page break after every 6 boards is honoured
-    pageSetup: { paperSize: 9, orientation: 'landscape', scale: 88, horizontalCentered: true,
+    pageSetup: { paperSize: 9, orientation: 'landscape', scale: 78, horizontalCentered: true,
       margins: { left: 0.3, right: 0.3, top: 0.3, bottom: 0.3, header: 0.1, footer: 0.1 } },
     views: [{ showGridLines: false }]
   });
-  const CARD_W = 34, GAP_W = 3, SKETCH_H = 105, ROW_H = 20, LINE_H = 15, CHARS_PER_LINE = 32;
-  const cols = [2, 4, 6];                                   // card columns B, D, F (A is a margin; C and E are gaps)
-  ws.columns = [2, CARD_W, GAP_W, CARD_W, GAP_W, CARD_W].map(width => ({ width }));
+  const LAB_W = 22, VAL_W = 30, GAP_W = 3, SKETCH_H = 100, ROW_H = 20, LINE_H = 15, CHARS_PER_LINE = 28;
+  const cols = [2, 5, 8];                                    // first column of each card: B, E, H (A is a margin; D and G are gaps)
+  ws.columns = [2, LAB_W, VAL_W, GAP_W, LAB_W, VAL_W, GAP_W, LAB_W, VAL_W].map(width => ({ width }));
   ws.getRow(1).height = 10;                                  // top margin row
   const gold = { argb: 'FFB08D57' }, rule = { argb: 'FFD9D2C5' }, ink = { argb: 'FF22232B' };
   const thin = { style: 'thin', color: rule };
   const box = { top: thin, left: thin, bottom: thin, right: thin };
-  const PAGE_ROWS = 19;                                      // title, (sketch + 6 rows), 3 blank rows, (sketch + 6 rows), date
+  const N = EXPORT_COLS.length;
+  const GROUP = 1 + N;                                       // sketch row + data rows
+  const PAGE_ROWS = 1 + GROUP + 3 + GROUP + 1;               // title, group, 3 blank rows, group, date
   const imgs = await Promise.all(boards.map(b => loadImg(b.img)));
   const pages = Math.ceil(boards.length / 6);
 
   for (let p = 0; p < pages; p++) {
     const t = p * PAGE_ROWS + 2;
     // heading with gold rule
-    ws.mergeCells(t, 2, t, 6);
+    ws.mergeCells(t, 2, t, 9);
     const h = ws.getCell(t, 2);
     h.value = 'STORY BOARD - OH MY BABY';
     h.font = { name: 'Georgia', size: 16, color: ink };
     h.alignment = { vertical: 'middle', horizontal: 'left' };
-    for (let c = 2; c <= 6; c++) ws.getCell(t, c).border = { bottom: { style: 'medium', color: gold } };
+    for (let c = 2; c <= 9; c++) ws.getCell(t, c).border = { bottom: { style: 'medium', color: gold } };
     ws.getRow(t).height = 30;
 
     for (let g = 0; g < 2; g++) {
-      const sketchRow = t + 1 + g * 10;                      // rows t+8..t+10 stay empty between the two groups
+      const sketchRow = t + 1 + g * (GROUP + 3);             // 3 empty rows between the two groups
       ws.getRow(sketchRow).height = SKETCH_H;
       EXPORT_COLS.forEach(([k], r) => {
         // wrap long text: the row grows to the longest value among the boards in this group
@@ -639,38 +652,45 @@ async function downloadXlsx() {
         ws.getRow(sketchRow + 1 + r).height = lines > 1 ? LINE_H * lines + 4 : ROW_H;
       });
     }
-    ws.getRow(t + 18).height = 18;
-    const d = ws.getCell(t + 18, 6);
+    const dateRow = t + PAGE_ROWS - 1;
+    ws.getRow(dateRow).height = 18;
+    const d = ws.getCell(dateRow, 9);
     d.value = todayText(); d.font = { size: 9, color: { argb: 'FF7A7468' } }; d.alignment = { horizontal: 'right' };
-    ws.getRow(t + 18).addPageBreak();
+    ws.getRow(dateRow).addPageBreak();
 
     for (let i = 0; i < 6 && p * 6 + i < boards.length; i++) {
       const idx = p * 6 + i, b = boards[idx], col = cols[i % 3];
-      const sketchRow = t + 1 + Math.floor(i / 3) * 10;
-      const sk = ws.getCell(sketchRow, col);
-      sk.border = { top: thin, left: thin, right: thin, bottom: { style: 'medium', color: gold } };
-      EXPORT_COLS.forEach(([k], r) => {
-        const c = ws.getCell(sketchRow + 1 + r, col);
-        c.value = b[k] || '';
-        c.font = { name: 'Calibri', size: 11, color: ink };
-        c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-        c.border = box;
+      const sketchRow = t + 1 + Math.floor(i / 3) * (GROUP + 3);
+      ws.mergeCells(sketchRow, col, sketchRow, col + 1);     // sketch spans label + value columns
+      for (let c = col; c <= col + 1; c++) {
+        ws.getCell(sketchRow, c).border = { top: thin, bottom: { style: 'medium', color: gold }, left: c === col ? thin : undefined, right: c === col + 1 ? thin : undefined };
+      }
+      EXPORT_COLS.forEach(([k, label], r) => {
+        const lab = ws.getCell(sketchRow + 1 + r, col), val = ws.getCell(sketchRow + 1 + r, col + 1);
+        lab.value = label; val.value = b[k] || '';
+        lab.font = { name: 'Calibri', size: 10, color: ink };
+        val.font = { name: 'Calibri', size: 11, color: ink };
+        lab.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true, indent: 1 };
+        val.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true, indent: 1 };
+        lab.border = box; val.border = box;
       });
       const im = imgs[idx];
       if (im) {
         const id = wb.addImage({ base64: b.img.split(',')[1], extension: 'png' });
-        const cellW = CARD_W * 7 + 5, cellH = SKETCH_H * 96 / 72;
+        const cellW = (LAB_W + VAL_W) * 7 + 10, cellH = SKETCH_H * 96 / 72;
         const s = Math.min((cellW - 12) / im.naturalWidth, (cellH - 12) / im.naturalHeight);
         const w = im.naturalWidth * s, hh = im.naturalHeight * s;
-        ws.addImage(id, { tl: { col: (col - 1) + (cellW - w) / 2 / cellW, row: (sketchRow - 1) + (cellH - hh) / 2 / cellH }, ext: { width: w, height: hh } });
+        // anchor on the first column; the offset in columns is measured against the first column's width, so use pixels via ext + tl fractions
+        const firstColW = LAB_W * 7 + 5;
+        ws.addImage(id, { tl: { col: (col - 1) + (cellW - w) / 2 / firstColW, row: (sketchRow - 1) + (cellH - hh) / 2 / cellH }, ext: { width: w, height: hh } });
       }
     }
   }
-  ws.pageSetup.printArea = `A1:F${pages * PAGE_ROWS + 1}`;
+  ws.pageSetup.printArea = `A1:I${pages * PAGE_ROWS + 1}`;
 
   // plain table for filtering / copying
   const ds = wb.addWorksheet('Data');
-  ds.columns = EXPORT_COLS.map(([k, label]) => ({ header: label, key: k, width: k === 'fabric' ? 34 : 20 }));
+  ds.columns = EXPORT_COLS.map(([k, label]) => ({ header: label, key: k, width: k === 'fabric' ? 44 : k === 'name' ? 30 : 22 }));
   boards.forEach(b => ds.addRow(b));
   ds.getRow(1).eachCell(c => {
     c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -733,10 +753,26 @@ function pickSizes(all) {
   return g ? g[1].trim() : '';
 }
 
+// Items listed under a BOM section such as "Print" or "Embroidery": rows that start with a code (PR012, EM002...)
+function sectionItems(all, titleRe) {
+  const SECTION = /^(Fabrics?|Labels?|Trims?|Print|Embroidery|Packaging|Packing|Accessories|Notions|Washes?)$/i;
+  const out = [];
+  for (let i = 0; i < all.length; i++) {
+    if (!(all[i].length === 1 && titleRe.test(all[i][0]))) continue;
+    for (let j = i + 1; j < all.length; j++) {
+      const l = all[j];
+      if (l.length === 1 && SECTION.test(l[0])) break;
+      if (/LABELLING AND PACKAGING|STYLE SPECIFICATION/i.test(l[0])) break;
+      if (l.length > 1 && /^[A-Z]{1,4}\d+$/.test(l[0]) && l[1]) out.push(l[0] + ' ' + l[1]);
+    }
+  }
+  return [...new Set(out)].join(' / ');
+}
+
 function extract(pages) {
   const all = pages.flatMap(p => p.lines.map(l => l.map(i => i.s)));
   const text = all.map(l => l.join(' ')).join('\n');
-  const d = { style: '', name: '', sizes: '', fabric: '', color: '', gsm: '' };
+  const d = { style: '', name: '', sizes: '', fabric: '', color: '', print: 'N/A', emb: 'N/A', qty: '' };
 
   const m = text.match(/PRODUCT:\s*(\S+)\s+(.+)/) || text.match(/PRODUCT\s+(PB\w+)\s+(.+)/);
   if (m) { d.style = m[1]; d.name = m[2].trim(); }
@@ -752,14 +788,19 @@ function extract(pages) {
 
   // fabric rows: code (F###), description, GSM wherever it appears in the row
   const rows = all.filter(l => l.length > 2 && /^F\d+$/.test(l[0]));
-  d.fabric = rows.map(l => l[0] + ' ' + l[1]).join(' / ');
-  const gs = [];
-  rows.forEach(l => {
-    const t = l.slice(1).find(s => GSM_RE.test(s));
-    if (t) { const v = t.match(GSM_RE)[1]; if (!gs.includes(v)) gs.push(v); }
-  });
-  if (!gs.length) { const g = text.match(GSM_RE); if (g) gs.push(g[1]); }
-  if (gs.length) d.gsm = gs.join(' / ') + ' GSM';
+  const anyG = text.match(GSM_RE);
+  // each fabric reads "code description NNN GSM"; the GSM comes from the description or another cell of the row
+  d.fabric = rows.map(l => {
+    const desc = String(l[1]);
+    if (GSM_RE.test(desc)) return l[0] + ' ' + desc.replace(GSM_RE, '$1 GSM');
+    const t = l.slice(2).find(s => GSM_RE.test(s));
+    const g = t ? t.match(GSM_RE)[1] : (rows.length === 1 && anyG ? anyG[1] : '');
+    return l[0] + ' ' + desc + (g ? ' ' + g + ' GSM' : '');
+  }).join(' / ');
+  if (!rows.length && anyG) d.fabric = anyG[1] + ' GSM';
+
+  d.print = sectionItems(all, /^Print$/i) || 'N/A';
+  d.emb = sectionItems(all, /^Embroidery$/i) || 'N/A';
 
   // colours: the cells after the unit of measure in the first fabric row (one per colourway),
   // else the "COLOR WAYS" list on the cover page, else the last cell of that row
@@ -877,12 +918,11 @@ function render() {
       c.innerHTML = `<div class="img"><span>Board ${i + 1} — upload a PDF</span></div>`;
       sheet.appendChild(c); continue;
     }
-    const cell = (k, ph, cls = '') => `<div class="row ${cls}" contenteditable="true" data-k="${k}" data-ph="${ph}"></div>`;
+    const row = ([k, label]) => `<div class="row"><span class="lab">${label}</span><div class="val" contenteditable="true" data-k="${k}"></div></div>`;
     c.innerHTML = `<button class="x" title="Remove">×</button>
       <div class="img">${d.img ? `<img src="${d.img}" alt="">` : '<span>No sketch found</span>'}</div>
-      ${cell('name', 'Style name')}${cell('sizes', 'Sizes')}${cell('style', 'Style no.')}
-      ${cell('fabric', 'Fabric')}${cell('color', 'Colour')}${cell('gsm', 'GSM')}`;
-    c.querySelectorAll('.row').forEach(r => {
+      ${EXPORT_COLS.map(row).join('')}`;
+    c.querySelectorAll('.val').forEach(r => {
       r.textContent = d[r.dataset.k] || '';
       r.addEventListener('input', () => { d[r.dataset.k] = r.textContent.trim(); });
     });
