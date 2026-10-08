@@ -551,7 +551,9 @@ function saveBlob(blob, name) {
 async function downloadPdf() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-  const M = 12, GAP = 6, CW = (297 - 2 * M - 2 * GAP) / 3, IMGH = 40, RH = 7, CH = IMGH + RH * 6, TOP = 24;
+  const M = 12, GAP = 6, CW = (297 - 2 * M - 2 * GAP) / 3, IMGH = 38, TOP = 24;
+  const RHS = [7, 7, 7, 11, 7, 7];                           // the fabric row is taller so long text can wrap
+  const CH = IMGH + RHS.reduce((a, b) => a + b, 0);
   const gold = [176, 141, 87], ink = [34, 35, 43], rule = [217, 210, 197];
   const imgs = await Promise.all(boards.map(b => loadImg(b.img)));
 
@@ -574,12 +576,18 @@ async function downloadPdf() {
       doc.setDrawColor(...gold); doc.setLineWidth(0.4); doc.line(x, y + IMGH, x + CW, y + IMGH);
       doc.setFont('helvetica', 'normal'); doc.setTextColor(...ink);
       EXPORT_COLS.forEach(([k], r) => {
-        const ry = y + IMGH + r * RH;
+        const RH = RHS[r], ry = y + IMGH + RHS.slice(0, r).reduce((a, c) => a + c, 0);
         if (r) { doc.setDrawColor(...rule); doc.setLineWidth(0.2); doc.line(x, ry, x + CW, ry); }
-        let fs = 10; doc.setFontSize(fs);
         const t = b[k] || '';
-        while (fs > 6 && doc.getTextWidth(t) > CW - 4) doc.setFontSize(--fs);
-        doc.text(t, x + CW / 2, ry + RH / 2 + 1.2, { align: 'center' });
+        let fs = 10, lines;
+        for (;;) {                                           // largest size at which the text fits the row (wrapping if needed)
+          doc.setFontSize(fs);
+          lines = doc.splitTextToSize(t, CW - 4);
+          if (lines.length * fs * 0.3528 * 1.2 <= RH - 1.2 || fs <= 6.5) break;
+          fs -= 0.5;
+        }
+        const lh = fs * 0.3528 * 1.2;
+        doc.text(lines, x + CW / 2, ry + RH / 2 - (lines.length - 1) * lh / 2 + fs * 0.3528 * 0.33, { align: 'center', lineHeightFactor: 1.2 });
       });
     }
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(122, 116, 104);
@@ -591,18 +599,19 @@ async function downloadPdf() {
 async function downloadXlsx() {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Story Board', {
-    pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, horizontalCentered: true,
-      margins: { left: 0.4, right: 0.4, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } },
+    // fixed scale (not fit-to-page) so the manual page break after every 6 boards is honoured
+    pageSetup: { paperSize: 9, orientation: 'landscape', scale: 88, horizontalCentered: true,
+      margins: { left: 0.3, right: 0.3, top: 0.3, bottom: 0.3, header: 0.1, footer: 0.1 } },
     views: [{ showGridLines: false }]
   });
-  const CARD_W = 34, GAP_W = 3, SKETCH_H = 113, ROW_H = 20, GAP_H = 14;
+  const CARD_W = 34, GAP_W = 3, SKETCH_H = 105, ROW_H = 20, LINE_H = 15, CHARS_PER_LINE = 32;
   const cols = [2, 4, 6];                                   // card columns B, D, F (A is a margin; C and E are gaps)
   ws.columns = [2, CARD_W, GAP_W, CARD_W, GAP_W, CARD_W].map(width => ({ width }));
   ws.getRow(1).height = 10;                                  // top margin row
   const gold = { argb: 'FFB08D57' }, rule = { argb: 'FFD9D2C5' }, ink = { argb: 'FF22232B' };
   const thin = { style: 'thin', color: rule };
   const box = { top: thin, left: thin, bottom: thin, right: thin };
-  const PAGE_ROWS = 17;                                      // title, 2 x (sketch + 6 rows), gap, date
+  const PAGE_ROWS = 19;                                      // title, (sketch + 6 rows), 3 blank rows, (sketch + 6 rows), date
   const imgs = await Promise.all(boards.map(b => loadImg(b.img)));
   const pages = Math.ceil(boards.length / 6);
 
@@ -618,26 +627,33 @@ async function downloadXlsx() {
     ws.getRow(t).height = 30;
 
     for (let g = 0; g < 2; g++) {
-      const sketchRow = t + 1 + g * 8;
+      const sketchRow = t + 1 + g * 10;                      // rows t+8..t+10 stay empty between the two groups
       ws.getRow(sketchRow).height = SKETCH_H;
-      for (let r = 1; r <= 6; r++) ws.getRow(sketchRow + r).height = ROW_H;
-      if (g === 0) ws.getRow(t + 8).height = GAP_H;
+      EXPORT_COLS.forEach(([k], r) => {
+        // wrap long text: the row grows to the longest value among the boards in this group
+        let lines = 1;
+        for (let n = 0; n < 3; n++) {
+          const b = boards[p * 6 + g * 3 + n];
+          if (b) lines = Math.max(lines, Math.ceil(String(b[k] || '').length / CHARS_PER_LINE));
+        }
+        ws.getRow(sketchRow + 1 + r).height = lines > 1 ? LINE_H * lines + 4 : ROW_H;
+      });
     }
-    ws.getRow(t + 16).height = 18;
-    const d = ws.getCell(t + 16, 6);
+    ws.getRow(t + 18).height = 18;
+    const d = ws.getCell(t + 18, 6);
     d.value = todayText(); d.font = { size: 9, color: { argb: 'FF7A7468' } }; d.alignment = { horizontal: 'right' };
-    ws.getRow(t + 16).addPageBreak();
+    ws.getRow(t + 18).addPageBreak();
 
     for (let i = 0; i < 6 && p * 6 + i < boards.length; i++) {
       const idx = p * 6 + i, b = boards[idx], col = cols[i % 3];
-      const sketchRow = t + 1 + Math.floor(i / 3) * 8;
+      const sketchRow = t + 1 + Math.floor(i / 3) * 10;
       const sk = ws.getCell(sketchRow, col);
       sk.border = { top: thin, left: thin, right: thin, bottom: { style: 'medium', color: gold } };
       EXPORT_COLS.forEach(([k], r) => {
         const c = ws.getCell(sketchRow + 1 + r, col);
         c.value = b[k] || '';
         c.font = { name: 'Calibri', size: 11, color: ink };
-        c.alignment = { horizontal: 'center', vertical: 'middle', shrinkToFit: true };
+        c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
         c.border = box;
       });
       const im = imgs[idx];
@@ -729,6 +745,7 @@ function extract(pages) {
     const n = text.match(/DESCRIPTION\s*:?\s*(.+?)\s+COLOU?R\b/i);
     if (s) d.style = s[1].trim();
     if (n) d.name = n[1].trim();
+    if (!d.style) { const h = text.match(/^STYLE\s+([A-Z]{2}\d\w*)\s+(.+?)\s+PRODUCT STORY/m); if (h) { d.style = h[1]; d.name = h[2].trim(); } }
   }
 
   d.sizes = pickSizes(all);
@@ -744,9 +761,16 @@ function extract(pages) {
   if (!gs.length) { const g = text.match(GSM_RE); if (g) gs.push(g[1]); }
   if (gs.length) d.gsm = gs.join(' / ') + ' GSM';
 
-  // colour: "COLOR WAYS ..." on the cover page, else the last cell of the first fabric row
+  // colours: the cells after the unit of measure in the first fabric row (one per colourway),
+  // else the "COLOR WAYS" list on the cover page, else the last cell of that row
   const cw = text.match(/COLOU?R\s*WAYS?\s+(.+?)\s+SIZE\b/i);
-  d.color = cw ? cw[1].trim() : (rows[0] ? rows[0][rows[0].length - 1] : '');
+  const r0 = rows[0] || [];
+  const ui = r0.findIndex(s => /^(Each|Metre|Meter|Mtr|Kg|Yard|Yds?|Set|Pair|Pcs|Piece)$/i.test(s));
+  let colors = ui >= 0 ? r0.slice(ui + 1) : [];
+  if (!colors.length && cw) colors = cw[1].split(/\s*[\/,&]\s*/);
+  if (!colors.length && r0.length) colors = [r0[r0.length - 1]];
+  d.colors = [...new Set(colors.map(c => c.trim()).filter(Boolean))];
+  d.color = d.colors.join(' / ');
   return d;
 }
 
@@ -829,7 +853,8 @@ async function addFile(file) {
   const d = extract(pages);
   d.img = await cropSketch(pages);
   d.file = file.name;
-  boards.push(d);
+  // one board per colourway, all sharing the same sketch and data
+  (d.colors.length > 1 ? d.colors : [d.color]).forEach(c => boards.push({ ...d, color: c }));
 }
 
 function render() {
