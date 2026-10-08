@@ -537,18 +537,18 @@ const todayText = () => new Date().toLocaleDateString('en-GB');
 const stamp = () => new Date().toISOString().slice(0, 10);
 const loadImg = src => new Promise(r => { if (!src) return r(null); const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; });
 
-// Rows of a board. A board with several fabrics gets "FABRIC DETAILS - n" / "FABRIC COLOUR - n" pairs.
+// Rows of a board. Each fabric is one row (colour in brackets); several fabrics are numbered "FABRIC DETAILS - n".
 function rowsFor(nf, numbered) {
   const r = [['name', 'PRODUCT DESCRIPTION'], ['sizes', 'SIZE RANGE'], ['style', 'STYLE No.']];
   for (let i = 1; i <= nf; i++) {
-    r.push(['fd' + i, numbered ? `FABRIC DETAILS - ${i}` : 'FABRIC DETAILS'], ['fc' + i, numbered ? `FABRIC COLOUR - ${i}` : 'FABRIC COLOUR']);
+    r.push(['fd' + i, numbered ? `FABRIC DETAILS - ${i}` : 'FABRIC DETAILS']);
   }
   return r.concat([['print', 'PRINT'], ['emb', 'EMBROIDERY'], ['qty', 'ORDER QTY']]);
 }
 
 // Page layout, in mm: the fabric-details row is taller so long text can wrap. Three boards share one row of the page.
 const IMG_MM = 32, GROUP_GAP_MM = 6, PAGE_CAP_MM = 180;
-const rowMm = k => /^fd\d+$/.test(k) ? 10.4 : 6.2;
+const rowMm = k => /^fd\d+$/.test(k) ? 12 : 6.2;
 const groupMm = nf => IMG_MM + rowsFor(nf, false).reduce((a, [k]) => a + rowMm(k), 0);
 
 // Split boards into pages of whole rows of 3; a board with more fabrics is taller, so fewer rows fit on its page.
@@ -939,11 +939,11 @@ async function addFile(file) {
   const { cards, details, ...d } = extract(pages);
   d.img = await cropSketch(pages);
   d.file = file.name;
-  // one board per colourway, all sharing the same sketch and data; every fabric gets its own details + colour rows
+  // one board per colourway, all sharing the same sketch and data; every fabric gets its own row, with its colour in brackets
   const nf = Math.max(1, details.length);
   (cards.length ? cards : [[]]).forEach(vec => {
     const b = { ...d, nf };
-    for (let i = 0; i < nf; i++) { b['fd' + (i + 1)] = details[i] || ''; b['fc' + (i + 1)] = vec[i] || ''; }
+    for (let i = 0; i < nf; i++) b['fd' + (i + 1)] = (details[i] || '') + (vec[i] ? ' (' + vec[i] + ')' : '');
     for (const k of Object.keys(b)) if (typeof b[k] === 'string' && k !== 'img' && k !== 'file') b[k] = b[k].toUpperCase();
     boards.push(b);
   });
