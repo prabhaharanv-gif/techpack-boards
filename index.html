@@ -596,8 +596,9 @@ async function downloadXlsx() {
     views: [{ showGridLines: false }]
   });
   const CARD_W = 34, GAP_W = 3, SKETCH_H = 113, ROW_H = 20, GAP_H = 14;
-  const cols = [1, 3, 5];                                   // card columns A, C, E (B and D are gaps)
-  ws.columns = [CARD_W, GAP_W, CARD_W, GAP_W, CARD_W].map(width => ({ width }));
+  const cols = [2, 4, 6];                                   // card columns B, D, F (A is a margin; C and E are gaps)
+  ws.columns = [2, CARD_W, GAP_W, CARD_W, GAP_W, CARD_W].map(width => ({ width }));
+  ws.getRow(1).height = 10;                                  // top margin row
   const gold = { argb: 'FFB08D57' }, rule = { argb: 'FFD9D2C5' }, ink = { argb: 'FF22232B' };
   const thin = { style: 'thin', color: rule };
   const box = { top: thin, left: thin, bottom: thin, right: thin };
@@ -606,14 +607,14 @@ async function downloadXlsx() {
   const pages = Math.ceil(boards.length / 6);
 
   for (let p = 0; p < pages; p++) {
-    const t = p * PAGE_ROWS + 1;
+    const t = p * PAGE_ROWS + 2;
     // heading with gold rule
-    ws.mergeCells(t, 1, t, 5);
-    const h = ws.getCell(t, 1);
+    ws.mergeCells(t, 2, t, 6);
+    const h = ws.getCell(t, 2);
     h.value = 'STORY BOARD - OH MY BABY';
     h.font = { name: 'Georgia', size: 16, color: ink };
     h.alignment = { vertical: 'middle', horizontal: 'left' };
-    for (let c = 1; c <= 5; c++) ws.getCell(t, c).border = { bottom: { style: 'medium', color: gold } };
+    for (let c = 2; c <= 6; c++) ws.getCell(t, c).border = { bottom: { style: 'medium', color: gold } };
     ws.getRow(t).height = 30;
 
     for (let g = 0; g < 2; g++) {
@@ -623,7 +624,7 @@ async function downloadXlsx() {
       if (g === 0) ws.getRow(t + 8).height = GAP_H;
     }
     ws.getRow(t + 16).height = 18;
-    const d = ws.getCell(t + 16, 5);
+    const d = ws.getCell(t + 16, 6);
     d.value = todayText(); d.font = { size: 9, color: { argb: 'FF7A7468' } }; d.alignment = { horizontal: 'right' };
     ws.getRow(t + 16).addPageBreak();
 
@@ -649,7 +650,7 @@ async function downloadXlsx() {
       }
     }
   }
-  ws.pageSetup.printArea = `A1:E${pages * PAGE_ROWS}`;
+  ws.pageSetup.printArea = `A1:F${pages * PAGE_ROWS + 1}`;
 
   // plain table for filtering / copying
   const ds = wb.addWorksheet('Data');
