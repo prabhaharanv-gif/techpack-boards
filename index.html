@@ -20,15 +20,15 @@ button.primary,.btn.primary{background:var(--accent);border-color:var(--accent);
 #boards{padding:20px 24px 40px}
 .sheet{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px;margin-bottom:20px}
 .ptitle,.pdate{display:none}
-.card{background:#fff;border:1px solid var(--line);border-radius:6px;width:100%;max-width:320px;justify-self:center;position:relative;box-shadow:0 1px 2px rgba(40,30,10,.06),0 6px 18px rgba(40,30,10,.07)}
+.card{background:#fff;border:1px solid var(--line);border-radius:6px;width:100%;max-width:400px;justify-self:center;position:relative;box-shadow:0 1px 2px rgba(40,30,10,.06),0 6px 18px rgba(40,30,10,.07)}
 .card.empty{border:1px dashed #cfc7b8;opacity:.6;box-shadow:none}
 .card .img{height:300px;display:flex;align-items:center;justify-content:center;padding:10px;background:#fbf9f6;border-radius:5px 5px 0 0}
 .card .img img{max-width:100%;max-height:100%;mix-blend-mode:multiply}
 .card .img span{color:#aaa;font-size:13px}
-.card .row{display:grid;grid-template-columns:42% 58%;border-top:1px solid var(--line);min-height:40px;background:#fff}
+.card .row{display:grid;grid-template-columns:46% 54%;border-top:1px solid var(--line);min-height:40px;background:#fff}
 .card .img+.row{border-top:2px solid var(--gold)}
-.card .lab{padding:6px 9px;font-size:12px;letter-spacing:.05em;color:var(--ink);border-right:1px solid var(--line);display:flex;align-items:center}
-.card .val{text-transform:uppercase;padding:6px 9px;font-size:14px;color:var(--ink);outline:none;display:flex;align-items:center;min-width:0;overflow-wrap:anywhere}
+.card .lab{padding:6px 9px;font-size:14px;letter-spacing:.02em;color:var(--ink);border-right:1px solid var(--line);display:flex;align-items:center}
+.card .val{text-transform:uppercase;padding:6px 9px;font-size:14px;letter-spacing:.02em;color:var(--ink);outline:none;display:flex;align-items:center;min-width:0;overflow-wrap:anywhere}
 .card .val:focus{background:#eef3ff}
 .x{position:absolute;top:4px;right:6px;border:0;background:none;color:#999;font-size:18px;padding:0 4px}
 @page{size:A4 landscape;margin:0}
@@ -45,7 +45,7 @@ button.primary,.btn.primary{background:var(--accent);border-color:var(--accent);
   .card{max-width:none;break-inside:avoid;box-shadow:none;border-radius:2mm}
   .card .img{height:30mm;padding:2mm}
   .card .row{min-height:5.6mm}
-  .card .lab{font-size:7.5pt;padding:.5mm 1.5mm}
+  .card .lab{font-size:8.5pt;padding:.5mm 1.5mm}
   .card .val{font-size:8.5pt;padding:.5mm 1.5mm}
 }
 </style>
@@ -547,8 +547,8 @@ function rowsFor(nf, numbered) {
 }
 
 // Page layout, in mm: the fabric-details row is taller so long text can wrap. Three boards share one row of the page.
-const IMG_MM = 32, GROUP_GAP_MM = 6, PAGE_CAP_MM = 180;
-const rowMm = k => /^fd\d+$/.test(k) ? 12 : 6.2;
+const IMG_MM = 29, GROUP_GAP_MM = 6, PAGE_CAP_MM = 180;
+const rowMm = k => /^fd\d+$/.test(k) ? 12 : (k === 'name' || k === 'print' || k === 'emb') ? 9 : 6;
 const groupMm = nf => IMG_MM + rowsFor(nf, false).reduce((a, [k]) => a + rowMm(k), 0);
 
 // Split boards into pages of whole rows of 3; a board with more fabrics is taller, so fewer rows fit on its page.
@@ -584,7 +584,7 @@ function saveBlob(blob, name) {
 async function downloadPdf() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-  const M = 12, GAP = 6, CW = (297 - 2 * M - 2 * GAP) / 3, TOP = 22, LABW = CW * 0.42;
+  const M = 12, GAP = 6, CW = (297 - 2 * M - 2 * GAP) / 3, TOP = 22, LABW = CW * 0.46;
   const gold = [176, 141, 87], ink = [34, 35, 43], rule = [217, 210, 197];
   const imgs = new Map(await Promise.all(boards.map(async b => [b, await loadImg(b.img)])));
 
@@ -612,20 +612,25 @@ async function downloadPdf() {
         rows.forEach(([k, label], r) => {
           const RH = RHS[r], ry = y + IMG_MM + RHS.slice(0, r).reduce((a, c) => a + c, 0);
           if (r) { doc.setDrawColor(...rule); doc.setLineWidth(0.2); doc.line(x, ry, x + CW, ry); }
-          // fit text into the cell: largest size at which it fits, wrapping onto more lines when needed
-          const put = (text, left, width, maxFs) => {
-            let fs = maxFs, lines;
+          // label and value share one font size: the largest at which both fit their cells (wrapping if needed)
+          const val = String(b[k] || '').toUpperCase();
+          const fit = (text, width) => {
+            let fs = 9;
             for (;;) {
               doc.setFontSize(fs);
-              lines = doc.splitTextToSize(String(text || ''), width - 3);
-              if (lines.length * fs * 0.3528 * 1.2 <= RH - 1 || fs <= 6) break;
+              const lines = doc.splitTextToSize(String(text || ''), width - 3);
+              if (lines.length * fs * 0.3528 * 1.2 <= RH - 1 || fs <= 6) return fs;
               fs -= 0.5;
             }
-            const lh = fs * 0.3528 * 1.2;
+          };
+          const fs = Math.min(fit(label, LABW), fit(val, CW - LABW));
+          const put = (text, left, width) => {
+            doc.setFontSize(fs);
+            const lines = doc.splitTextToSize(String(text || ''), width - 3), lh = fs * 0.3528 * 1.2;
             doc.text(lines, left + 1.5, ry + RH / 2 - (lines.length - 1) * lh / 2 + fs * 0.3528 * 0.33, { lineHeightFactor: 1.2 });
           };
-          put(label, x, LABW, 8.5);
-          put(String(b[k] || '').toUpperCase(), x + LABW, CW - LABW, 9.5);
+          put(label, x, LABW);
+          put(val, x + LABW, CW - LABW);
         });
       });
       y += CH + GAP;
@@ -640,11 +645,11 @@ async function downloadXlsx() {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Story Board', {
     // fixed scale (not fit-to-page) so the manual page breaks are honoured
-    pageSetup: { paperSize: 9, orientation: 'landscape', scale: 78, horizontalCentered: true,
+    pageSetup: { paperSize: 9, orientation: 'landscape', scale: 74, horizontalCentered: true,
       margins: { left: 0.3, right: 0.3, top: 0.3, bottom: 0.3, header: 0.1, footer: 0.1 } },
     views: [{ showGridLines: false }]
   });
-  const LAB_W = 22, VAL_W = 30, GAP_W = 3, SKETCH_H = 100, ROW_H = 20, LINE_H = 15, CHARS_PER_LINE = 28;
+  const LAB_W = 28, VAL_W = 30, GAP_W = 3, SKETCH_H = 100, ROW_H = 20, LINE_H = 15, CHARS_PER_LINE = 28;
   const cols = [2, 5, 8];                                    // first column of each card: B, E, H (A is a margin; D and G are gaps)
   ws.columns = [2, LAB_W, VAL_W, GAP_W, LAB_W, VAL_W, GAP_W, LAB_W, VAL_W].map(width => ({ width }));
   ws.getRow(1).height = 10;                                  // top margin row
@@ -683,7 +688,7 @@ async function downloadXlsx() {
         rows.forEach(([k, label], r) => {
           const lab = ws.getCell(sketchRow + 1 + r, col), val = ws.getCell(sketchRow + 1 + r, col + 1);
           lab.value = label; val.value = String(b[k] || '').toUpperCase();
-          lab.font = { name: 'Calibri', size: 10, color: ink };
+          lab.font = { name: 'Calibri', size: 11, color: ink };
           val.font = { name: 'Calibri', size: 11, color: ink };
           lab.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true, indent: 1 };
           val.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true, indent: 1 };
