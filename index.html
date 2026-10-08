@@ -38,7 +38,7 @@ button.primary,.btn.primary{background:var(--accent);border-color:var(--accent);
   #boards{padding:0}
   .sheet{grid-template-columns:repeat(3,1fr);gap:6mm;margin:0;position:relative;width:297mm;height:210mm;padding:21mm 12mm 11mm;break-after:page;overflow:hidden;align-content:start;background:#fff}
   .sheet.blank{display:none}
-  .sheet:last-child{break-after:auto}
+  .sheet.lastreal{break-after:auto}
   .ptitle{display:block;position:absolute;top:8mm;left:12mm;right:12mm;margin:0;padding-bottom:3mm;border-bottom:.5mm solid var(--gold);font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:17pt;letter-spacing:.18em;text-transform:uppercase;color:var(--ink)}
   .ptitle b{font-weight:700;color:var(--gold-d)}
   .pdate{display:block;position:absolute;bottom:5mm;right:12mm;font-size:9pt;letter-spacing:.16em;color:var(--mute);border-top:.2mm solid var(--line);padding-top:1.5mm;min-width:30mm;text-align:right}
@@ -532,14 +532,41 @@ https://github.com/nodeca/pako/blob/main/LICENSE
  * @copyright Louis-Dominique Dubeau
  */function n(e){return e>=65&&e<=90||95===e||e>=97&&e<=122||e>=192&&e<=214||e>=216&&e<=246||e>=248&&e<=767||e>=880&&e<=893||e>=895&&e<=8191||e>=8204&&e<=8205||e>=8304&&e<=8591||e>=11264&&e<=12271||e>=12289&&e<=55295||e>=63744&&e<=64975||e>=65008&&e<=65533||e>=65536&&e<=983039}Object.defineProperty(r,"__esModule",{value:!0}),r.NC_NAME_START_CHAR="A-Z_a-z\xc0-\xd6\xd8-\xf6\xf8-\u02ff\u0370-\u037d\u037f-\u1fff\u200c-\u200d\u2070-\u218f\u2c00-\u2fef\u3001-\ud7ff\uf900-\ufdcf\ufdf0-\ufffd\ud800\udc00-\udb7f\udfff",r.NC_NAME_CHAR="-"+r.NC_NAME_START_CHAR+".0-9\xb7\u0300-\u036f\u203f-\u2040",r.NC_NAME_START_CHAR_RE=new RegExp("^["+r.NC_NAME_START_CHAR+"]$","u"),r.NC_NAME_CHAR_RE=new RegExp("^["+r.NC_NAME_CHAR+"]$","u"),r.NC_NAME_RE=new RegExp("^["+r.NC_NAME_START_CHAR+"]["+r.NC_NAME_CHAR+"]*$","u"),r.isNCNameStartChar=n,r.isNCNameChar=function(e){return n(e)||45===e||46===e||e>=48&&e<=57||183===e||e>=768&&e<=879||e>=8255&&e<=8256}},{}]},{},[15])(15)}));
 //# sourceMappingURL=exceljs.min.js.map</script>
-<script>// Downloads: PDF (A4 landscape, 6 boards per page) and Excel (same board layout, plus a plain data sheet).
-const EXPORT_COLS = [
-  ['name', 'PRODUCT DESCRIPTION'], ['sizes', 'SIZE RANGE'], ['style', 'STYLE No.'], ['fabric', 'FABRIC DETAILS'],
-  ['color', 'FABRIC COLOUR'], ['print', 'PRINT'], ['emb', 'EMBROIDERY'], ['qty', 'ORDER QTY']
-];
+<script>// Board rows, page layout, and downloads: PDF (A4 landscape) and Excel (same board layout, plus a plain data sheet).
 const todayText = () => new Date().toLocaleDateString('en-GB');
 const stamp = () => new Date().toISOString().slice(0, 10);
 const loadImg = src => new Promise(r => { if (!src) return r(null); const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; });
+
+// Rows of a board. A board with several fabrics gets "FABRIC DETAILS - n" / "FABRIC COLOUR - n" pairs.
+function rowsFor(nf, numbered) {
+  const r = [['name', 'PRODUCT DESCRIPTION'], ['sizes', 'SIZE RANGE'], ['style', 'STYLE No.']];
+  for (let i = 1; i <= nf; i++) {
+    r.push(['fd' + i, numbered ? `FABRIC DETAILS - ${i}` : 'FABRIC DETAILS'], ['fc' + i, numbered ? `FABRIC COLOUR - ${i}` : 'FABRIC COLOUR']);
+  }
+  return r.concat([['print', 'PRINT'], ['emb', 'EMBROIDERY'], ['qty', 'ORDER QTY']]);
+}
+
+// Page layout, in mm: the fabric-details row is taller so long text can wrap. Three boards share one row of the page.
+const IMG_MM = 32, GROUP_GAP_MM = 6, PAGE_CAP_MM = 180;
+const rowMm = k => /^fd\d+$/.test(k) ? 10.4 : 6.2;
+const groupMm = nf => IMG_MM + rowsFor(nf, false).reduce((a, [k]) => a + rowMm(k), 0);
+
+// Split boards into pages of whole rows of 3; a board with more fabrics is taller, so fewer rows fit on its page.
+function paginate(list) {
+  const groups = [];
+  for (let i = 0; i < list.length; i += 3) {
+    const items = list.slice(i, i + 3);
+    const nf = Math.max(...items.map(b => b.nf || 1));
+    groups.push({ items, nf, h: groupMm(nf) });
+  }
+  const pages = []; let cur = null, used = 0;
+  groups.forEach(g => {
+    if (!cur || used + GROUP_GAP_MM + g.h > PAGE_CAP_MM) { cur = { groups: [] }; pages.push(cur); used = 0; }
+    used += (cur.groups.length ? GROUP_GAP_MM : 0) + g.h;
+    cur.groups.push(g);
+  });
+  return pages;
+}
 
 function toJpeg(im) {
   const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight;
@@ -557,60 +584,62 @@ function saveBlob(blob, name) {
 async function downloadPdf() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-  const M = 12, GAP = 6, CW = (297 - 2 * M - 2 * GAP) / 3, IMGH = 32, TOP = 22, LABW = CW * 0.42;
-  const RHS = [6.2, 6.2, 6.2, 10.4, 6.2, 6.2, 6.2, 6.2];                     // the fabric row is taller so long text can wrap
-  const CH = IMGH + RHS.reduce((a, b) => a + b, 0);
+  const M = 12, GAP = 6, CW = (297 - 2 * M - 2 * GAP) / 3, TOP = 22, LABW = CW * 0.42;
   const gold = [176, 141, 87], ink = [34, 35, 43], rule = [217, 210, 197];
-  const imgs = await Promise.all(boards.map(b => loadImg(b.img)));
+  const imgs = new Map(await Promise.all(boards.map(async b => [b, await loadImg(b.img)])));
 
-  for (let p = 0; p < boards.length; p += 6) {
-    if (p) doc.addPage();
+  paginate(boards).forEach((pg, pi) => {
+    if (pi) doc.addPage();
     doc.setFont('times', 'normal'); doc.setFontSize(16); doc.setTextColor(...ink);
     doc.text('STORY BOARD - OH MY BABY', M, 14, { charSpace: 1.2 });
     doc.setDrawColor(...gold); doc.setLineWidth(0.5); doc.line(M, 18, 297 - M, 18);
 
-    for (let i = 0; i < 6 && p + i < boards.length; i++) {
-      const b = boards[p + i], im = imgs[p + i];
-      const x = M + (i % 3) * (CW + GAP), y = TOP + Math.floor(i / 3) * (CH + GAP);
-      if (im) {
-        const s = Math.min((CW - 4) / im.naturalWidth, (IMGH - 3) / im.naturalHeight);
-        const w = im.naturalWidth * s, h = im.naturalHeight * s;
-        doc.addImage(toJpeg(im), 'JPEG', x + (CW - w) / 2, y + (IMGH - h) / 2, w, h);
-      }
-      doc.setDrawColor(...rule); doc.setLineWidth(0.25);
-      doc.roundedRect(x, y, CW, CH, 1.5, 1.5, 'S');
-      doc.line(x + LABW, y + IMGH, x + LABW, y + CH);
-      doc.setDrawColor(...gold); doc.setLineWidth(0.4); doc.line(x, y + IMGH, x + CW, y + IMGH);
-      doc.setFont('helvetica', 'normal'); doc.setTextColor(...ink);
-      EXPORT_COLS.forEach(([k, label], r) => {
-        const RH = RHS[r], ry = y + IMGH + RHS.slice(0, r).reduce((a, c) => a + c, 0);
-        if (r) { doc.setDrawColor(...rule); doc.setLineWidth(0.2); doc.line(x, ry, x + CW, ry); }
-        // fit text into the cell: largest size at which it fits, wrapping onto more lines when needed
-        const put = (text, left, width, maxFs) => {
-          let fs = maxFs, lines;
-          for (;;) {
-            doc.setFontSize(fs);
-            lines = doc.splitTextToSize(String(text || ''), width - 3);
-            if (lines.length * fs * 0.3528 * 1.2 <= RH - 1 || fs <= 6) break;
-            fs -= 0.5;
-          }
-          const lh = fs * 0.3528 * 1.2;
-          doc.text(lines, left + 1.5, ry + RH / 2 - (lines.length - 1) * lh / 2 + fs * 0.3528 * 0.33, { lineHeightFactor: 1.2 });
-        };
-        put(label, x, LABW, 8.5);
-        put(b[k], x + LABW, CW - LABW, 9.5);
+    let y = TOP;
+    pg.groups.forEach(g => {
+      const rows = rowsFor(g.nf, g.nf > 1), RHS = rows.map(([k]) => rowMm(k)), CH = IMG_MM + RHS.reduce((a, b) => a + b, 0);
+      g.items.forEach((b, n) => {
+        const im = imgs.get(b), x = M + n * (CW + GAP);
+        if (im) {
+          const s = Math.min((CW - 4) / im.naturalWidth, (IMG_MM - 3) / im.naturalHeight);
+          const w = im.naturalWidth * s, h = im.naturalHeight * s;
+          doc.addImage(toJpeg(im), 'JPEG', x + (CW - w) / 2, y + (IMG_MM - h) / 2, w, h);
+        }
+        doc.setDrawColor(...rule); doc.setLineWidth(0.25);
+        doc.roundedRect(x, y, CW, CH, 1.5, 1.5, 'S');
+        doc.line(x + LABW, y + IMG_MM, x + LABW, y + CH);
+        doc.setDrawColor(...gold); doc.setLineWidth(0.4); doc.line(x, y + IMG_MM, x + CW, y + IMG_MM);
+        doc.setFont('helvetica', 'normal'); doc.setTextColor(...ink);
+        rows.forEach(([k, label], r) => {
+          const RH = RHS[r], ry = y + IMG_MM + RHS.slice(0, r).reduce((a, c) => a + c, 0);
+          if (r) { doc.setDrawColor(...rule); doc.setLineWidth(0.2); doc.line(x, ry, x + CW, ry); }
+          // fit text into the cell: largest size at which it fits, wrapping onto more lines when needed
+          const put = (text, left, width, maxFs) => {
+            let fs = maxFs, lines;
+            for (;;) {
+              doc.setFontSize(fs);
+              lines = doc.splitTextToSize(String(text || ''), width - 3);
+              if (lines.length * fs * 0.3528 * 1.2 <= RH - 1 || fs <= 6) break;
+              fs -= 0.5;
+            }
+            const lh = fs * 0.3528 * 1.2;
+            doc.text(lines, left + 1.5, ry + RH / 2 - (lines.length - 1) * lh / 2 + fs * 0.3528 * 0.33, { lineHeightFactor: 1.2 });
+          };
+          put(label, x, LABW, 8.5);
+          put(b[k], x + LABW, CW - LABW, 9.5);
+        });
       });
-    }
+      y += CH + GAP;
+    });
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(122, 116, 104);
     doc.text(todayText(), 297 - M, 204, { align: 'right' });
-  }
+  });
   saveBlob(doc.output('blob'), `Story Board - Oh My Baby ${stamp()}.pdf`);
 }
 
 async function downloadXlsx() {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Story Board', {
-    // fixed scale (not fit-to-page) so the manual page break after every 6 boards is honoured
+    // fixed scale (not fit-to-page) so the manual page breaks are honoured
     pageSetup: { paperSize: 9, orientation: 'landscape', scale: 78, horizontalCentered: true,
       margins: { left: 0.3, right: 0.3, top: 0.3, bottom: 0.3, header: 0.1, footer: 0.1 } },
     views: [{ showGridLines: false }]
@@ -622,75 +651,70 @@ async function downloadXlsx() {
   const gold = { argb: 'FFB08D57' }, rule = { argb: 'FFD9D2C5' }, ink = { argb: 'FF22232B' };
   const thin = { style: 'thin', color: rule };
   const box = { top: thin, left: thin, bottom: thin, right: thin };
-  const N = EXPORT_COLS.length;
-  const GROUP = 1 + N;                                       // sketch row + data rows
-  const PAGE_ROWS = 1 + GROUP + 3 + GROUP + 1;               // title, group, 3 blank rows, group, date
-  const imgs = await Promise.all(boards.map(b => loadImg(b.img)));
-  const pages = Math.ceil(boards.length / 6);
+  const imgs = new Map(await Promise.all(boards.map(async b => [b, await loadImg(b.img)])));
 
-  for (let p = 0; p < pages; p++) {
-    const t = p * PAGE_ROWS + 2;
+  let row = 2;
+  paginate(boards).forEach(pg => {
     // heading with gold rule
-    ws.mergeCells(t, 2, t, 9);
-    const h = ws.getCell(t, 2);
+    ws.mergeCells(row, 2, row, 9);
+    const h = ws.getCell(row, 2);
     h.value = 'STORY BOARD - OH MY BABY';
     h.font = { name: 'Georgia', size: 16, color: ink };
     h.alignment = { vertical: 'middle', horizontal: 'left' };
-    for (let c = 2; c <= 9; c++) ws.getCell(t, c).border = { bottom: { style: 'medium', color: gold } };
-    ws.getRow(t).height = 30;
+    for (let c = 2; c <= 9; c++) ws.getCell(row, c).border = { bottom: { style: 'medium', color: gold } };
+    ws.getRow(row).height = 30;
+    row++;
 
-    for (let g = 0; g < 2; g++) {
-      const sketchRow = t + 1 + g * (GROUP + 3);             // 3 empty rows between the two groups
+    pg.groups.forEach((g, gi) => {
+      const rows = rowsFor(g.nf, g.nf > 1), sketchRow = row;
       ws.getRow(sketchRow).height = SKETCH_H;
-      EXPORT_COLS.forEach(([k], r) => {
+      rows.forEach(([k], r) => {
         // wrap long text: the row grows to the longest value among the boards in this group
         let lines = 1;
-        for (let n = 0; n < 3; n++) {
-          const b = boards[p * 6 + g * 3 + n];
-          if (b) lines = Math.max(lines, Math.ceil(String(b[k] || '').length / CHARS_PER_LINE));
-        }
+        g.items.forEach(b => { lines = Math.max(lines, Math.ceil(String(b[k] || '').length / CHARS_PER_LINE)); });
         ws.getRow(sketchRow + 1 + r).height = lines > 1 ? LINE_H * lines + 4 : ROW_H;
       });
-    }
-    const dateRow = t + PAGE_ROWS - 1;
-    ws.getRow(dateRow).height = 18;
-    const d = ws.getCell(dateRow, 9);
-    d.value = todayText(); d.font = { size: 9, color: { argb: 'FF7A7468' } }; d.alignment = { horizontal: 'right' };
-    ws.getRow(dateRow).addPageBreak();
-
-    for (let i = 0; i < 6 && p * 6 + i < boards.length; i++) {
-      const idx = p * 6 + i, b = boards[idx], col = cols[i % 3];
-      const sketchRow = t + 1 + Math.floor(i / 3) * (GROUP + 3);
-      ws.mergeCells(sketchRow, col, sketchRow, col + 1);     // sketch spans label + value columns
-      for (let c = col; c <= col + 1; c++) {
-        ws.getCell(sketchRow, c).border = { top: thin, bottom: { style: 'medium', color: gold }, left: c === col ? thin : undefined, right: c === col + 1 ? thin : undefined };
-      }
-      EXPORT_COLS.forEach(([k, label], r) => {
-        const lab = ws.getCell(sketchRow + 1 + r, col), val = ws.getCell(sketchRow + 1 + r, col + 1);
-        lab.value = label; val.value = b[k] || '';
-        lab.font = { name: 'Calibri', size: 10, color: ink };
-        val.font = { name: 'Calibri', size: 11, color: ink };
-        lab.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true, indent: 1 };
-        val.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true, indent: 1 };
-        lab.border = box; val.border = box;
+      g.items.forEach((b, n) => {
+        const col = cols[n];
+        ws.mergeCells(sketchRow, col, sketchRow, col + 1);   // sketch spans label + value columns
+        for (let c = col; c <= col + 1; c++) {
+          ws.getCell(sketchRow, c).border = { top: thin, bottom: { style: 'medium', color: gold }, left: c === col ? thin : undefined, right: c === col + 1 ? thin : undefined };
+        }
+        rows.forEach(([k, label], r) => {
+          const lab = ws.getCell(sketchRow + 1 + r, col), val = ws.getCell(sketchRow + 1 + r, col + 1);
+          lab.value = label; val.value = b[k] || '';
+          lab.font = { name: 'Calibri', size: 10, color: ink };
+          val.font = { name: 'Calibri', size: 11, color: ink };
+          lab.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true, indent: 1 };
+          val.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true, indent: 1 };
+          lab.border = box; val.border = box;
+        });
+        const im = imgs.get(b);
+        if (im) {
+          const id = wb.addImage({ base64: b.img.split(',')[1], extension: 'png' });
+          const cellW = (LAB_W + VAL_W) * 7 + 10, cellH = SKETCH_H * 96 / 72, firstColW = LAB_W * 7 + 5;
+          const s = Math.min((cellW - 12) / im.naturalWidth, (cellH - 12) / im.naturalHeight);
+          const w = im.naturalWidth * s, hh = im.naturalHeight * s;
+          ws.addImage(id, { tl: { col: (col - 1) + (cellW - w) / 2 / firstColW, row: (sketchRow - 1) + (cellH - hh) / 2 / cellH }, ext: { width: w, height: hh } });
+        }
       });
-      const im = imgs[idx];
-      if (im) {
-        const id = wb.addImage({ base64: b.img.split(',')[1], extension: 'png' });
-        const cellW = (LAB_W + VAL_W) * 7 + 10, cellH = SKETCH_H * 96 / 72;
-        const s = Math.min((cellW - 12) / im.naturalWidth, (cellH - 12) / im.naturalHeight);
-        const w = im.naturalWidth * s, hh = im.naturalHeight * s;
-        // anchor on the first column; the offset in columns is measured against the first column's width, so use pixels via ext + tl fractions
-        const firstColW = LAB_W * 7 + 5;
-        ws.addImage(id, { tl: { col: (col - 1) + (cellW - w) / 2 / firstColW, row: (sketchRow - 1) + (cellH - hh) / 2 / cellH }, ext: { width: w, height: hh } });
-      }
-    }
-  }
-  ws.pageSetup.printArea = `A1:I${pages * PAGE_ROWS + 1}`;
+      row = sketchRow + 1 + rows.length;
+      if (gi < pg.groups.length - 1) row += 3;               // 3 empty rows between two rows of boards
+    });
+
+    ws.getRow(row).height = 18;
+    const d = ws.getCell(row, 9);
+    d.value = todayText(); d.font = { size: 9, color: { argb: 'FF7A7468' } }; d.alignment = { horizontal: 'right' };
+    ws.getRow(row).addPageBreak();
+    row++;
+  });
+  ws.pageSetup.printArea = `A1:I${row - 1}`;
 
   // plain table for filtering / copying
   const ds = wb.addWorksheet('Data');
-  ds.columns = EXPORT_COLS.map(([k, label]) => ({ header: label, key: k, width: k === 'fabric' ? 44 : k === 'name' ? 30 : 22 }));
+  const nfMax = Math.max(1, ...boards.map(b => b.nf || 1));
+  const dcols = rowsFor(nfMax, nfMax > 1);
+  ds.columns = dcols.map(([k, label]) => ({ header: label, key: k, width: /^fd/.test(k) ? 44 : k === 'name' ? 30 : 22 }));
   boards.forEach(b => ds.addRow(b));
   ds.getRow(1).eachCell(c => {
     c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -753,15 +777,15 @@ function pickSizes(all) {
   return g ? g[1].trim() : '';
 }
 
+const SECTION_RE = /^(Fabrics?|Labels?|Trims?|Print|Embroidery|Packaging|Packing|Accessories|Notions|Washes?)$/i;
 // Items listed under a BOM section such as "Print" or "Embroidery": rows that start with a code (PR012, EM002...)
 function sectionItems(all, titleRe) {
-  const SECTION = /^(Fabrics?|Labels?|Trims?|Print|Embroidery|Packaging|Packing|Accessories|Notions|Washes?)$/i;
   const out = [];
   for (let i = 0; i < all.length; i++) {
     if (!(all[i].length === 1 && titleRe.test(all[i][0]))) continue;
     for (let j = i + 1; j < all.length; j++) {
       const l = all[j];
-      if (l.length === 1 && SECTION.test(l[0])) break;
+      if (l.length === 1 && SECTION_RE.test(l[0])) break;
       if (/LABELLING AND PACKAGING|STYLE SPECIFICATION/i.test(l[0])) break;
       if (l.length > 1 && /^[A-Z]{1,4}\d+$/.test(l[0]) && l[1]) out.push(l[0] + ' ' + l[1]);
     }
@@ -772,7 +796,7 @@ function sectionItems(all, titleRe) {
 function extract(pages) {
   const all = pages.flatMap(p => p.lines.map(l => l.map(i => i.s)));
   const text = all.map(l => l.join(' ')).join('\n');
-  const d = { style: '', name: '', sizes: '', fabric: '', color: '', print: 'N/A', emb: 'N/A', qty: '' };
+  const d = { style: '', name: '', sizes: '', print: 'N/A', emb: 'N/A', qty: '' };
 
   const m = text.match(/PRODUCT:\s*(\S+)\s+(.+)/) || text.match(/PRODUCT\s+(PB\w+)\s+(.+)/);
   if (m) { d.style = m[1]; d.name = m[2].trim(); }
@@ -787,31 +811,52 @@ function extract(pages) {
   d.sizes = pickSizes(all);
 
   // fabric rows: code (F###), description, GSM wherever it appears in the row
-  const rows = all.filter(l => l.length > 2 && /^F\d+$/.test(l[0]));
+  const rowIdx = [];
+  all.forEach((l, i) => { if (l.length > 2 && /^F\d+$/.test(l[0])) rowIdx.push(i); });
+  const rows = rowIdx.map(i => all[i]);
   const anyG = text.match(GSM_RE);
-  // each fabric reads "code description NNN GSM"; the GSM comes from the description or another cell of the row
-  d.fabric = rows.map(l => {
+  // a long description can wrap, leaving "420g" on the line below the row
+  const gsmBelow = ri => {
+    for (let j = rowIdx[ri] + 1; j < Math.min(all.length, rowIdx[ri] + 4); j++) {
+      const x = all[j];
+      if (/^[A-Z]{1,4}\d+$/.test(x[0]) || (x.length === 1 && SECTION_RE.test(x[0]))) break;
+      const t = x.find(s => /^\d+(?:\.\d+)?\s*g(?:sm)?$/i.test(s));
+      if (t) return t.match(GSM_RE)[1];
+    }
+    return '';
+  };
+  // each fabric reads "code description NNN GSM"; the GSM comes from the description, another cell of the row, or the line below
+  d.details = rows.map((l, ri) => {
     const desc = String(l[1]);
     if (GSM_RE.test(desc)) return l[0] + ' ' + desc.replace(GSM_RE, '$1 GSM');
     const t = l.slice(2).find(s => GSM_RE.test(s));
-    const g = t ? t.match(GSM_RE)[1] : (rows.length === 1 && anyG ? anyG[1] : '');
+    const g = t ? t.match(GSM_RE)[1] : (gsmBelow(ri) || (rows.length === 1 && anyG ? anyG[1] : ''));
     return l[0] + ' ' + desc + (g ? ' ' + g + ' GSM' : '');
-  }).join(' / ');
-  if (!rows.length && anyG) d.fabric = anyG[1] + ' GSM';
+  });
+  if (!rows.length && anyG) d.details.push(anyG[1] + ' GSM');
 
   d.print = sectionItems(all, /^Print$/i) || 'N/A';
   d.emb = sectionItems(all, /^Embroidery$/i) || 'N/A';
 
-  // colours: the cells after the unit of measure in the first fabric row (one per colourway),
-  // else the "COLOR WAYS" list on the cover page, else the last cell of that row
+  // colour of each fabric: the cells after the unit of measure in its row (one per colourway),
+  // else the "COLOR WAYS" list on the cover page, else the last cell of the row.
+  // One card is made per colourway; each card lists every fabric with its colour for that colourway.
+  const UOM = /^(Each|Metre|Meter|Mtr|Kg|Yard|Yds?|Set|Pair|Pcs|Piece)$/i;
   const cw = text.match(/COLOU?R\s*WAYS?\s+(.+?)\s+SIZE\b/i);
-  const r0 = rows[0] || [];
-  const ui = r0.findIndex(s => /^(Each|Metre|Meter|Mtr|Kg|Yard|Yds?|Set|Pair|Pcs|Piece)$/i.test(s));
-  let colors = ui >= 0 ? r0.slice(ui + 1) : [];
-  if (!colors.length && cw) colors = cw[1].split(/\s*[\/,&]\s*/);
-  if (!colors.length && r0.length) colors = [r0[r0.length - 1]];
-  d.colors = [...new Set(colors.map(c => c.trim()).filter(Boolean))];
-  d.color = d.colors.join(' / ');
+  const cover = cw ? cw[1].split(/\s*[\/,&]\s*/).map(s => s.trim()).filter(Boolean) : [];
+  const perRow = rows.map(l => {
+    const u = l.findIndex(s => UOM.test(s));
+    const c = u >= 0 ? l.slice(u + 1).map(s => s.trim()).filter(Boolean) : [];
+    return c.length ? c : (cover.length ? cover : [String(l[l.length - 1]).trim()]);
+  });
+  const ncol = Math.max(1, ...perRow.map(c => c.length));
+  const seen = new Set();
+  d.cards = [];
+  for (let j = 0; j < ncol; j++) {
+    const vec = perRow.map(c => c[Math.min(j, c.length - 1)]);
+    const key = vec.join('|');
+    if (!seen.has(key)) { seen.add(key); d.cards.push(vec); }
+  }
   return d;
 }
 
@@ -891,43 +936,59 @@ async function cropSketch(pages) {
 
 async function addFile(file) {
   const pages = await readPdf(file);
-  const d = extract(pages);
+  const { cards, details, ...d } = extract(pages);
   d.img = await cropSketch(pages);
   d.file = file.name;
-  // one board per colourway, all sharing the same sketch and data
-  (d.colors.length > 1 ? d.colors : [d.color]).forEach(c => boards.push({ ...d, color: c }));
+  // one board per colourway, all sharing the same sketch and data; every fabric gets its own details + colour rows
+  const nf = Math.max(1, details.length);
+  (cards.length ? cards : [[]]).forEach(vec => {
+    const b = { ...d, nf };
+    for (let i = 0; i < nf; i++) { b['fd' + (i + 1)] = details[i] || ''; b['fc' + (i + 1)] = vec[i] || ''; }
+    boards.push(b);
+  });
 }
 
 function render() {
   const box = $('#boards');
   box.innerHTML = '';
-  const total = Math.ceil(Math.max(MIN_BOARDS, boards.length) / 6) * 6;
   const today = new Date().toLocaleDateString('en-GB');
-  let sheet;
-  for (let i = 0; i < total; i++) {
-    if (i % 6 === 0) {
-      sheet = document.createElement('section');
-      sheet.className = 'sheet' + (i >= boards.length ? ' blank' : '');
-      sheet.innerHTML = '<h2 class="ptitle">Story Board <b>- Oh My Baby</b></h2><div class="pdate">' + today + '</div>';
-      box.appendChild(sheet);
-    }
-    const d = boards[i];
+  const newSheet = blank => {
+    const s = document.createElement('section');
+    s.className = 'sheet' + (blank ? ' blank' : '');
+    s.innerHTML = '<h2 class="ptitle">Story Board <b>- Oh My Baby</b></h2><div class="pdate">' + today + '</div>';
+    box.appendChild(s);
+    return s;
+  };
+  const card = (d, g) => {
     const c = document.createElement('div');
-    c.className = 'card' + (d ? '' : ' empty');
-    if (!d) {
-      c.innerHTML = `<div class="img"><span>Board ${i + 1} — upload a PDF</span></div>`;
-      sheet.appendChild(c); continue;
-    }
+    c.className = 'card';
     const row = ([k, label]) => `<div class="row"><span class="lab">${label}</span><div class="val" contenteditable="true" data-k="${k}"></div></div>`;
     c.innerHTML = `<button class="x" title="Remove">×</button>
       <div class="img">${d.img ? `<img src="${d.img}" alt="">` : '<span>No sketch found</span>'}</div>
-      ${EXPORT_COLS.map(row).join('')}`;
+      ${rowsFor(d.nf, d.nf > 1).map(row).join('')}`;
     c.querySelectorAll('.val').forEach(r => {
       r.textContent = d[r.dataset.k] || '';
       r.addEventListener('input', () => { d[r.dataset.k] = r.textContent.trim(); });
     });
-    c.querySelector('.x').onclick = () => { boards.splice(i, 1); render(); };
-    sheet.appendChild(c);
+    c.querySelector('.x').onclick = () => { boards.splice(boards.indexOf(d), 1); render(); };
+    return c;
+  };
+  // pages hold whole rows of 3 boards; a board with several fabrics is taller, so fewer rows fit
+  const pages = paginate(boards);
+  pages.forEach((pg, pi) => {
+    const sheet = newSheet(false);
+    if (pi === pages.length - 1) sheet.classList.add('lastreal');
+    pg.groups.forEach(g => g.items.forEach(d => sheet.appendChild(card(d, g))));
+  });
+  const fill = Math.max(0, MIN_BOARDS - boards.length);
+  if (fill) {
+    const sheet = newSheet(true);
+    for (let i = 0; i < fill; i++) {
+      const c = document.createElement('div');
+      c.className = 'card empty';
+      c.innerHTML = `<div class="img"><span>Board ${boards.length + i + 1} — upload a PDF</span></div>`;
+      sheet.appendChild(c);
+    }
   }
 }
 
